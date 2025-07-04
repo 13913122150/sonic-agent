@@ -243,15 +243,15 @@ public class SibTool implements ApplicationListener<ContextRefreshedEvent> {
         String commandLine;
 
         // ios17 support, but mac only
-        if (isUpperThanIos17(udId)) {
-            commandLine = String.format(
-                    "xcodebuild -project %s -scheme WebDriverAgentRunner -destination 'id=%s' test",
-                    xcodeProjectPath, udId);
-        } else {
+        // if (isUpperThanIos17(udId)) {
+        //     commandLine = String.format(
+        //             "xcodebuild -project %s -scheme WebDriverAgentRunner -destination 'id=%s' test",
+        //             xcodeProjectPath, udId);
+        // } else {
             commandLine = String.format(
                     "%s run wda -u %s -b %s --mjpeg-remote-port 9100 --server-remote-port 8100 --mjpeg-local-port %d --server-local-port %d",
                     sib, udId, bundleId, mjpegPort, wdaPort);
-        }
+        // }
         String system = System.getProperty("os.name").toLowerCase();
         if (system.contains("win")) {
             wdaProcess = Runtime.getRuntime().exec(new String[]{"cmd", "/c", commandLine});
@@ -260,10 +260,38 @@ public class SibTool implements ApplicationListener<ContextRefreshedEvent> {
         }
         InputStreamReader inputStreamReader = new InputStreamReader(wdaProcess.getInputStream());
         BufferedReader stdInput = new BufferedReader(inputStreamReader);
+        InputStreamReader err = new InputStreamReader(wdaProcess.getErrorStream());
+        BufferedReader stdInputErr = new BufferedReader(err);
         Semaphore isFinish = new Semaphore(0);
 
         int finalWdaPort = wdaPort;
         int finalMjpegPort = mjpegPort;
+
+        Thread wdaErrThread = new Thread(() -> {
+            String s;
+            while (true) {
+                try {
+                    if ((s = stdInputErr.readLine()) == null)
+                        break;
+                } catch (IOException e) {
+                    logger.info(e.getMessage());
+                    break;
+                }
+                logger.info("WDA Error: " + s);
+            }
+            try {
+                stdInputErr.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            try {
+                err.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            logger.info("WebDriverAgent error thread shutdown.");
+        });
+        wdaErrThread.start();
 
         Thread wdaThread = new Thread(() -> {
             String s;
